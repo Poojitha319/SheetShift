@@ -12,19 +12,18 @@ from openpyxl.comments import Comment
 import pandas as pd
 
 # ---------------- Utility Functions ----------------
-def convert_to_csv(file_path: str):
+def convert_to_csv(file_path:str):
+   """
+    Use this tool to convert the excel file to CSV.
+
+    * file_path: Path to the Excel file to be converted
     """
-    Convert first sheet of Excel to CSV (temporary) for agent reference.
-    """
-    try:
-        df = pd.read_excel(file_path, sheet_name=None)  
-        first_sheet_name = list(df.keys())[0]
-        csv_path = "temp.csv"
-        df[first_sheet_name].head(10).to_csv(csv_path, index=False)
-        st.write("Converted first sheet to CSV for agent reference :leftwards_arrow_with_hook:")
-        return csv_path
-    except Exception as e:
-        st.error(f"Error converting Excel to CSV: {e}")
+   # Load the file  
+   df = pd.read_excel(file_path).head(10)
+
+   # Convert to CSV
+   st.write("Converting to CSV... :leftwards_arrow_with_hook:")
+   return df.to_csv('temp.csv', index=False)
 
 def add_comments_to_header(file_path: str, data_dict: str = "data_dict.json"):
     """
@@ -35,7 +34,7 @@ def add_comments_to_header(file_path: str, data_dict: str = "data_dict.json"):
         return
 
     try:
-        with open(data_dict, "r") as f:
+        with open(data_dict, "r",errors="ignore") as f:
             data_dict_json = json.load(f)
 
         wb = load_workbook(file_path)
@@ -69,23 +68,35 @@ def create_agent(api_key):
     """
     agent = Agent(
         model=Gemini(id="gemini-2.0-flash", api_key=api_key),
-        description=dedent("""\
-            You are a multi-sheet Excel automation agent. Your task:
-            1. Do NOT read Excel files as text.
-            2. Read all sheets of the uploaded Excel workbook using openpyxl.
-            3. Follow only the user instructions given in natural language.
-            4. Update data (items, quantities, dates, salaries, bids, costs, etc.) exactly as requested.
-            5. Perform calculations like totals, taxes (GST, VAT), discounts, deductions only if the user specifies.
-            6. Preserve all formulas, formatting, layout, and styles.
-            7. Apply updates consistently across sheets if required.
-            8. Optionally generate a data dictionary as 'data_dict.json'.
+        description = dedent("""\
+            You are a smart Excel agent that works with complex Excel files containing one or more sheets. 
+            Your main task is to update the Excel sheets based on user prompts while strictly preserving the original format.
+
+            Your responsibilities:
+
+            1. Read the Excel workbook and understand the structure of each sheet.
+            2. Accept user instructions in natural language describing changes. Example instructions:
+            - "Update the date and items in this invoice with new data"
+            - "Apply 20 percent discount to the final cost"
+            - "Change employee salary and recalculate deductions in the payslip"
+            3. Automatically perform any calculations required by the prompt:
+            - Totals, subtotals
+            - Taxes (GST, VAT, etc.)
+            - Discounts or other adjustments
+            4. Ensure that all sheets and all cells in the workbook maintain the original formatting, layout, formulas, and style.
+            5. For multi-sheet workbooks, apply changes consistently across sheets if needed.
+            6. Output a modified Excel file reflecting all changes.
+            7. Optionally, provide a data dictionary or summary of changes if requested.
+
             Constraints:
-            - Do NOT modify anything beyond what the user instructs.
-            - Maintain the original structure of each sheet.
-        """),
-        tools=[FileTools(enable_read_file=True)],
+            - Do not modify the format beyond what the user instructed.
+            - Preserve formulas, styling, and layout unless changes require recalculation.
+            - Any missing or unclear information should be inferred logically where possible.
+            """),
+        tools=[ FileTools() ],
         retries=2,
-    )
+        # show_tool_calls=True
+        )
     return agent
 
 # ---------------- Streamlit UI ----------------
@@ -155,6 +166,3 @@ if agent_run and input_file and user_prompt:
     st.progress(100, text="Done!")
 
 
-
-# Apply a 10% discount on all items where Discount(%) is 0.
-# 8. Save the updated file as 'modified_output.xlsx'.
