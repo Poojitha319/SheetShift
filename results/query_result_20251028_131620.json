@@ -1,0 +1,34 @@
+{
+  "timestamp": "20251028_131620",
+  "query": "create a new sheet i want highlighter , stapler , ruler , of quantity 69 each and each price is 5 and discount is 50percent",
+  "generated_code": "import pandas as pd\nimport numpy as np\n\n# User-defined parameters for the new items\nnew_items_info = {\n    \"Item\": [\"highlighter\", \"stapler\", \"ruler\"],\n    \"Quantity\": 69,\n    \"Unit_Price\": 5,\n    \"Discount(%)\": 50\n}\n\nnew_data_rows = []\n\n# Default value for Tax(%) as it's not provided by the user query\n# and has no interdependency from the user's given inputs (Instruction 7)\ndefault_tax_percent = 0\n\nfor item_name in new_items_info[\"Item\"]:\n    quantity = new_items_info[\"Quantity\"]\n    unit_price = new_items_info[\"Unit_Price\"]\n    discount_percent = new_items_info[\"Discount(%)\"]\n    tax_percent = default_tax_percent\n\n    # Calculate Total (after discount, before tax)\n    # Total = Quantity * Unit_Price * (1 - Discount(%)/100)\n    total_before_tax = quantity * unit_price * (1 - discount_percent / 100)\n\n    # Calculate Final_Amount (after discount and after tax)\n    # Final_Amount = Total * (1 + Tax(%)/100)\n    final_amount = total_before_tax * (1 + tax_percent / 100)\n\n    row_data = {\n        \"Item\": item_name,\n        \"Quantity\": quantity,\n        \"Unit_Price\": unit_price,\n        \"Discount(%)\": discount_percent,\n        \"Tax(%)\": tax_percent,\n        \"Total\": total_before_tax,\n        \"Final_Amount\": final_amount\n    }\n    new_data_rows.append(row_data)\n\n# The result is a list of dictionaries, representing the new \"sheet\" or DataFrame rows.\nresult = new_data_rows",
+  "result": [
+    {
+      "Item": "highlighter",
+      "Quantity": 69,
+      "Unit_Price": 5,
+      "Discount(%)": 50,
+      "Tax(%)": 0,
+      "Total": 172.5,
+      "Final_Amount": 172.5
+    },
+    {
+      "Item": "stapler",
+      "Quantity": 69,
+      "Unit_Price": 5,
+      "Discount(%)": 50,
+      "Tax(%)": 0,
+      "Total": 172.5,
+      "Final_Amount": 172.5
+    },
+    {
+      "Item": "ruler",
+      "Quantity": 69,
+      "Unit_Price": 5,
+      "Discount(%)": 50,
+      "Tax(%)": 0,
+      "Total": 172.5,
+      "Final_Amount": 172.5
+    }
+  ]
+}
