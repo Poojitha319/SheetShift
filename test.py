@@ -15,7 +15,7 @@ tools = [
 ]
 
 
-os.environ["GEMINI_API_KEY"] = "your_gemini_api_key_here"
+os.environ["GEMINI_API_KEY"] = "AIzaSyCnoGijuNotDoq78dbkD_Ynlua_e7DnG7A"
 agent = Agent(
     model=Gemini(id="gemini-2.0-flash",api_key = os.getenv("GEMINI_API_KEY")),
     description=dedent("""

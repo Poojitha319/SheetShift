@@ -1,0 +1,34 @@
+{
+  "timestamp": "20251028_133700",
+  "query": "create a new sheet i want highlighter , stapler , ruler , of quantity 69 each and each price is 5 and discount is 50percent",
+  "generated_code": "import pandas as pd\nimport numpy as np\n\ndef find_column(df_param, column_name):\n    \"\"\"\n    Finds the actual column name in a DataFrame given a case-insensitive query.\n    If df_param is None or doesn't have columns (e.g., when constructing new data),\n    it defaults to using the known available columns for canonical names.\n    \"\"\"\n    available_cols = [\n      \"Item\",\n      \"Quantity\",\n      \"Unit_Price\",\n      \"Discount(%)\",\n      \"Tax(%)\",\n      \"Total\",\n      \"Final_Amount\"\n    ]\n\n    if df_param is not None and not df_param.empty:\n        # Check in the actual DataFrame columns if available\n        for col in df_param.columns:\n            if col.lower() == column_name.lower():\n                return col\n    else:\n        # Fallback to predefined available_cols for cases where df is not yet formed\n        # or for new column creation where we want canonical names.\n        for col in available_cols:\n            if col.lower() == column_name.lower():\n                return col\n    return None\n\n# User query details for new items\nnew_items_spec = [\n    {\"Item\": \"highlighter\", \"Quantity\": 69, \"Unit_Price\": 5, \"Discount(%)\": 50},\n    {\"Item\": \"stapler\", \"Quantity\": 69, \"Unit_Price\": 5, \"Discount(%)\": 50},\n    {\"Item\": \"ruler\", \"Quantity\": 69, \"Unit_Price\": 5, \"Discount(%)\": 50},\n]\n\n# Get canonical column names using find_column\n# (passing None for df_param as we are creating new data, not querying an existing df)\ncol_item = find_column(None, \"Item\")\ncol_quantity = find_column(None, \"Quantity\")\ncol_unit_price = find_column(None, \"Unit_Price\")\ncol_discount_percent = find_column(None, \"Discount(%)\")\ncol_tax_percent = find_column(None, \"Tax(%)\")\ncol_total = find_column(None, \"Total\")\ncol_final_amount = find_column(None, \"Final_Amount\")\n\nnew_rows_list = []\n\nfor item_data in new_items_spec:\n    # Extract known values from the user query\n    item_name = item_data.get(\"Item\", \"\")\n    quantity = item_data.get(\"Quantity\", 0)\n    unit_price = item_data.get(\"Unit_Price\", 0)\n    discount_percent = item_data.get(\"Discount(%)\", 0)\n\n    # Apply instruction 7: default values for fields not provided by the user\n    # \"Tax(%)\" was not specified and has no direct inter-dependency with user-given values.\n    tax_percent = 0\n\n    # Calculate interdependent fields (\"Total\" and \"Final_Amount\")\n    total = 0\n    final_amount = 0\n\n    if quantity is not None and unit_price is not None:\n        # Ensure numeric type for calculations\n        quantity = pd.to_numeric(quantity, errors='coerce')\n        unit_price = pd.to_numeric(unit_price, errors='coerce')\n        discount_percent = pd.to_numeric(discount_percent, errors='coerce')\n        tax_percent = pd.to_numeric(tax_percent, errors='coerce')\n\n        if not pd.isna(quantity) and not pd.isna(unit_price):\n            total = quantity * unit_price\n            \n            # Calculate amount after discount\n            discount_factor = discount_percent / 100 if not pd.isna(discount_percent) else 0\n            amount_after_discount = total * (1 - discount_factor)\n            \n            # Calculate final amount\n            tax_factor = tax_percent / 100 if not pd.isna(tax_percent) else 0\n            final_amount = amount_after_discount * (1 + tax_factor)\n\n    new_row_dict = {\n        col_item: item_name,\n        col_quantity: quantity,\n        col_unit_price: unit_price,\n        col_discount_percent: discount_percent,\n        col_tax_percent: tax_percent,\n        col_total: total,\n        col_final_amount: final_amount\n    }\n    new_rows_list.append(new_row_dict)\n\nresult = new_rows_list",
+  "result": [
+    {
+      "Item": "highlighter",
+      "Quantity": 69,
+      "Unit_Price": 5,
+      "Discount(%)": 50,
+      "Tax(%)": 0,
+      "Total": 345,
+      "Final_Amount": 172.5
+    },
+    {
+      "Item": "stapler",
+      "Quantity": 69,
+      "Unit_Price": 5,
+      "Discount(%)": 50,
+      "Tax(%)": 0,
+      "Total": 345,
+      "Final_Amount": 172.5
+    },
+    {
+      "Item": "ruler",
+      "Quantity": 69,
+      "Unit_Price": 5,
+      "Discount(%)": 50,
+      "Tax(%)": 0,
+      "Total": 345,
+      "Final_Amount": 172.5
+    }
+  ]
+}

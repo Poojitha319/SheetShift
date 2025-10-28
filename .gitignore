@@ -4,3 +4,5 @@ __pycache__/
 modified_output.xlsx
 env
 .env
+tools/.DS_Store
+.DS_Store
