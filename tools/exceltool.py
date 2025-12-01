@@ -1,125 +1,107 @@
+import os
 import json
 import textwrap
 import traceback
-from typing import Any, Dict
+from datetime import datetime
+from typing import Any, Dict, Union
 import pandas as pd
 from agno.tools import tool
 import google.generativeai as genai
 
-# Configure Gemini API
-
-GEMINI_API_KEY=""
+# ===============================
+# Gemini API Configuration
+# ===============================
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Define the core function without the decorator
-def load_excel(path: str) -> Dict[str, Any]:
-    """
-    Loads an Excel file and returns a dictionary containing:
-      - 'df': DataFrame
-      - 'columns': list of column names
-      - 'preview': preview of the first 5 rows
-      - 'shape': tuple representing the shape of the DataFrame
-      - 'path': path to the Excel file
-    """
+# ===============================
+# Load Excel or CSV Data
+# ===============================
+def load_excel_or_csv(path: str, sheet_name: Union[str, None] = None) -> Dict[str, Any]:
     if not path:
-        raise ValueError("A path to the Excel file is required.")
-    df = pd.read_excel(path)
+        raise ValueError("A valid path to the Excel or CSV file is required.")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"File not found: {path}")
+    ext = os.path.splitext(path)[1].lower()
+    df = None
+    active_sheet = None
+    if ext in [".xls", ".xlsx"]:
+        excel_file = pd.ExcelFile(path)
+        sheets = excel_file.sheet_names
+        if len(sheets) > 1:
+            print(f"\n📘 This Excel file contains multiple sheets: {sheets}")
+            if sheet_name is None:
+                sheet_name = input("Enter sheet name to use (default first): ").strip() or sheets[0]
+        else:
+            sheet_name = sheets[0]
+        df = pd.read_excel(path, sheet_name=sheet_name)
+        active_sheet = sheet_name
+    elif ext == ".csv":
+        df = pd.read_csv(path)
+        active_sheet = "CSV"
+    else:
+        raise ValueError("Unsupported file type. Only .xlsx, .xls, and .csv are supported.")
     return {
         "df": df,
         "columns": list(df.columns),
         "preview": df.head(5).to_dict(orient="records"),
         "shape": df.shape,
         "path": path,
+        "sheet_name": active_sheet,
     }
 
-# Define the exceltool with the @tool decorator wrapping the core function
+# ===============================
+# Agno Tool Wrapper
+# ===============================
 @tool(
     name="exceltool",
-    description="Loads an Excel file and returns its metadata and preview.",
+    description="Loads an Excel (multi-sheet) or CSV file and returns metadata and preview.",
     show_result=True,
     stop_after_tool_call=True
 )
-def exceltool(path: str) -> Dict[str, Any]:
-    """Tool wrapper for loading Excel files."""
-    return load_excel(path)
+def exceltool(path: str, sheet_name: Union[str, None] = None) -> Dict[str, Any]:
+    return load_excel_or_csv(path, sheet_name)
 
-# Helper function to find column name case-insensitively with fuzzy matching
-def find_column(df: pd.DataFrame, search_term: str) -> str:
-    """
-    Finds a column in the DataFrame that matches the search term (case-insensitive).
-    Also supports partial matching (e.g., 'price' matches 'Unit_Price').
-    Returns the actual column name or None if not found.
-    """
-    search_lower = search_term.lower().replace('_', '').replace(' ', '')
-    
-    # First try exact match (ignoring case)
+# ===============================
+# Helper Function: Find Column
+# ===============================
+def find_column(df: pd.DataFrame, search_term: str) -> Union[str, None]:
+    search_lower = search_term.lower().replace("_", "").replace(" ", "")
     for col in df.columns:
-        col_normalized = str(col).lower().replace('_', '').replace(' ', '')
-        if col_normalized == search_lower:
+        normalized = str(col).lower().replace("_", "").replace(" ", "")
+        if normalized == search_lower:
             return col
-    
-    # Then try partial match (search term is contained in column name)
     for col in df.columns:
-        col_normalized = str(col).lower().replace('_', '').replace(' ', '')
-        if search_lower in col_normalized:
+        normalized = str(col).lower().replace("_", "").replace(" ", "")
+        if search_lower in normalized:
             return col
-    
     return None
 
-# Function to execute the code snippet
+# ===============================
+# Execute Generated Code Safely
+# ===============================
 def execute_snippet(df: pd.DataFrame, code: str) -> Dict[str, Any]:
-    """
-    Executes the provided code snippet in a restricted environment.
-    Returns a dictionary with the execution result.
-    """
-    # Prepare the local environment with the DataFrame
     local_vars = {"df": df.copy(), "pd": pd, "find_column": find_column}
     try:
-        # Execute the code snippet
         exec(textwrap.dedent(code), {}, local_vars)
         result = local_vars.get("result", None)
         if isinstance(result, pd.DataFrame):
+            # convert for result output
             result = result.head(50).to_dict(orient="records")
         return {"ok": True, "result": result}
     except Exception as e:
-        tb = traceback.format_exc()
-        return {"ok": False, "error": str(e), "traceback": tb}
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
-# Function to handle the user's query and process the Excel file
-def answer_excel_question(path: str, user_query: str) -> Dict[str, Any]:
-    """
-    Processes the user's query by loading the Excel file, generating code to
-    apply the requested operation, executing the code, and returning the results.
-    """
-    # Load the Excel file using the core load_excel function
-    tool_out = load_excel(path)
-    df = tool_out["df"]
-    columns = tool_out["columns"]
-    preview = tool_out["preview"]
+# ===============================
+# Generate Pandas Code via Gemini
+# ===============================
+def generate_code(columns: list, preview: list, user_query: str, path: str, sheet_name: str) -> str:
+    prompt = f"""
+You are a Python pandas expert. Generate Python code to answer the user's query about an Excel or CSV DataFrame.
 
-    # Generate code based on the user's query
-    code = generate_code(columns, preview, user_query)
-
-    # Execute the generated code
-    exec_out = execute_snippet(df, code)
-
-    return {
-        "path": path,
-        "columns": columns,
-        "preview": preview,
-        "query": user_query,
-        "code": code,
-        "execution": exec_out,
-    }
-
-# Function to generate code based on the user's query using Gemini
-def generate_code(columns: list, preview: list, user_query: str) -> str:
-    """
-    Generates a Python code snippet based on the user's query, the columns of the
-    DataFrame, and a preview of the data using Gemini AI.
-    """
-    
-    prompt = f"""You are a Python pandas expert. Generate Python code to answer the user's query about an Excel DataFrame.
+**File Information:**
+- Path: {path}
+- Sheet Name: {sheet_name}
 
 **Available DataFrame columns:**
 {json.dumps(columns, indent=2)}
@@ -131,58 +113,135 @@ def generate_code(columns: list, preview: list, user_query: str) -> str:
 {user_query}
 
 **Critical Instructions:**
-1. The DataFrame is available as variable 'df'
-2. MANDATORY: Use 'find_column(df, "column_name")' to find ANY column before using it
-   - Example: item_col = find_column(df, "item") 
-   - Example: qty_col = find_column(df, "quantity")
-   - This handles case-insensitive matching and variations
-3. ALWAYS check if column is None before using it
-4. ALWAYS store the final result in a variable called 'result'
-5. Analyze the query carefully:
-   - "total available items" = count unique items OR sum quantities
-   - "no of glue available" = filter where Item='Glue', then sum Quantity or count rows
-   - "items with no discount" = filter where Discount(%)=0
-   - "apply discount" = modify price values
-6. For numeric operations: pd.to_numeric(df[col], errors='coerce')
-7. Work on copy: df = df.copy()
-8. For simple counts/sums, result can be a number or dict
-9. For filtered data, convert DataFrame to dict: result = filtered_df.to_dict(orient='records')
+1. The DataFrame is available as variable 'df'.
+2. ALWAYS use find_column(df, "column_name") to reference columns (case-insensitive).
+3. ALWAYS check if column is None before using.
+4. Store final output in variable 'result'.
+5. Use pd.to_numeric(df[col], errors='coerce') for numeric ops.
+6. Return result as:
+   - Dict for summary numbers.
+   - List of dicts for filtered rows.
+7 if remaining fields are not given by the user just simply return  0 for number fields ( if no inter dependency  , if there is inter dependency then  calculate it and make value  for example user given cost of item , and quantity of item and total is not mention so you are responsible to calculate , similarly for other fields also  ) and "" for string fields for there remaining fields 
+8 Model is not hallucinating but get real data from the excel file or user query.
 
-**Example Code Patterns:**
-
-# For "no of glue available" or "count glue items":
-item_col = find_column(df, "item")
-qty_col = find_column(df, "quantity")
-if item_col and qty_col:
-    df[qty_col] = pd.to_numeric(df[qty_col], errors='coerce')
-    glue_rows = df[df[item_col].str.lower().str.contains('glue', na=False)]
-    result = {{"total_quantity": int(glue_rows[qty_col].sum()), "item_count": len(glue_rows)}}
-
-# For "total available items":
-item_col = find_column(df, "item")
-if item_col:
-    result = {{"unique_items": df[item_col].nunique(), "total_rows": len(df)}}
-
-**Generate ONLY the Python code, no explanations or markdown:**"""
-
-    try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        response = model.generate_content(prompt)
-        code = response.text.strip()
-        
-        # Clean up the code (remove markdown code blocks if present)
-        if code.startswith('```python'):
-            code = code[len('```python'):].strip()
-        if code.startswith('```'):
-            code = code[3:].strip()
-        if code.endswith('```'):
-            code = code[:-3].strip()
-            
-        return code
-    except Exception as e:
-        # Fallback to a simple code template if Gemini fails
-        print(f"Warning: Gemini API failed ({e}), using fallback code generation")
-        return """
-# Fallback: Display all data
-result = df.head(50).to_dict(orient='records')
+**Generate ONLY executable Python code. No markdown, no explanations.**
 """
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    response = model.generate_content(prompt)
+    code = response.text.strip()
+    for marker in ("```python", "```"):
+        code = code.replace(marker, "")
+    return code.strip()
+
+# ===============================
+# Save Query Results to JSON
+# ===============================
+def save_query_output(query: str, code: str, result: Any) -> None:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)
+    filename = os.path.join(results_dir, f"query_result_{timestamp}.json")
+    payload = {
+        "timestamp": timestamp,
+        "query": query,
+        "generated_code": code,
+        "result": result,
+    }
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, default=str)
+    print(f"\n💾 Query and results saved to: {filename}")
+
+# ===============================
+# Save Query Results to Excel (new sheet/file)
+# ===============================
+def save_result_to_excel(result: Any, base_path: str, query: str) -> None:
+    """
+    Saves the result (dict/list or single value) into an Excel file.
+    If result is list of dicts, convert to DataFrame.
+    If result is a simple number or dict, wrap into one-row DataFrame.
+    The new file is named based on base_path and query timestamp.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # derive filename
+    dirname, fname = os.path.split(base_path)
+    name, ext = os.path.splitext(fname)
+    new_fname = f"{name}_result_{timestamp}.xlsx"
+    new_path =  os.path.join(dirname, new_fname)
+    # convert result to DataFrame
+    if isinstance(result, list):
+        df_result = pd.DataFrame(result)
+    elif isinstance(result, dict):
+        df_result = pd.DataFrame([result])
+    else:
+        df_result = pd.DataFrame([{"result": result}])
+    # write to excel
+    with pd.ExcelWriter(new_path) as writer:
+        df_result.to_excel(writer, sheet_name="QueryResult", index=False)
+    print(f"📄 Result saved to Excel file: {new_path}")
+
+# ===============================
+# Main Logic: Answer Excel Question
+# ===============================
+def answer_excel_question(path: str, user_query: str, sheet_name: Union[str, None] = None) -> Dict[str, Any]:
+    tool_out = load_excel_or_csv(path, sheet_name)
+    df = tool_out["df"]
+    columns = tool_out["columns"]
+    preview = tool_out["preview"]
+    sheet = tool_out["sheet_name"]
+    # generate code
+    code = generate_code(columns, preview, user_query, path, sheet)
+    # execute snippet
+    exec_out = execute_snippet(df, code)
+    return {
+        "path": path,
+        "sheet": sheet,
+        "columns": columns,
+        "query": user_query,
+        "code": code,
+        "execution": exec_out,
+    }
+
+# ===============================
+# Interactive Loop Tool
+# ===============================
+@tool(
+    name="interactive_loop",
+    description="Interactive loop to handle user input.",
+    show_result=True
+)
+def interactive_loop(path: str, user_query: str) -> None:
+    print("=== Agno + Gemini Excel/CSV Agent ===")
+    path = path.strip()
+    if not path:
+        print("❌ No path provided; exiting.")
+        return
+    print(f"✅ Loaded file: {path}")
+    user_query = user_query.strip()
+    if user_query.lower() in {"exit", "quit"}:
+        print("👋 Goodbye.")
+        return
+    print("\n🤖 Generating code with Gemini...")
+    out = answer_excel_question(path, user_query)
+    print("\n--- Generated Code ---")
+    print(out["code"])
+    print("\n--- Execution Result ---")
+    exec_out = out["execution"]
+    if exec_out.get("ok"):
+        result = exec_out["result"]
+        print(json.dumps(result, indent=2, default=str))
+        # Save JSON?
+
+        save_query_output(user_query, out["code"], result)
+        save_result_to_excel(result, path, user_query)
+    else:
+        print(f"❌ Error: {exec_out['error']}")
+        print(exec_out.get("traceback", ""))
+ 
+ 
+if __name__ == "__main__":
+    interactive_loop(
+        path="/Users/jayanth/Desktop/SheetShift/Invoice_20rows.xlsx",
+        user_query="""   can you create a new sheet i want Eraser , ruler , of quantity 69 each and each price is 5 and discount is 10%
+""",
+        save_choice="y"
+    )
